@@ -145,8 +145,12 @@ class PyTorchInference(Inference):
         return self.model.decoder(tokens, audio_features, kv_cache=self.kv_cache)
 
     def cleanup_caching(self):
-        for hook in self.hooks:
-            hook.remove()
+        from .model import MultiHeadAttention
+        def uninstall_hooks(layer):
+            if isinstance(layer, MultiHeadAttention):
+                layer.key._forward_hooks.clear()
+                layer.value._forward_hooks.clear()
+        self.model.decoder.apply(uninstall_hooks)
 
         self.kv_cache = {}
         self.hooks = []
