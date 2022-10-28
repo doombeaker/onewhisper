@@ -110,10 +110,13 @@ def log_mel_spectrogram(audio: Union[str, np.ndarray, torch.Tensor], n_mels: int
         if isinstance(audio, str):
             audio = load_audio(audio)
         audio = torch.from_numpy(audio)
-
+    audio = audio.to(device="cuda:0")
     window = torch.hann_window(N_FFT).to(audio.device)
-    stft = torch.stft(audio, N_FFT, HOP_LENGTH, window=window, return_complex=True)
-    magnitudes = stft[:, :-1].abs() ** 2
+
+    #TODO: OneFlow should support stft and complex datatype
+    #stft = torch.stft(audio, N_FFT, HOP_LENGTH, window=window, return_complex=True)
+    #magnitudes = stft[:, :-1].abs() ** 2
+    magnitudes = torch.randn(201,2988,device="cuda:0")
 
     filters = mel_filters(audio.device, n_mels)
     mel_spec = filters @ magnitudes
