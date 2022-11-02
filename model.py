@@ -3,10 +3,10 @@ from typing import Dict
 from typing import Iterable, Optional
 
 import numpy as np
-import torch
-import torch.nn.functional as F
-from torch import Tensor
-from torch import nn
+import oneflow as torch
+import oneflow.nn.functional as F
+from oneflow import Tensor
+from oneflow import nn
 
 from .transcribe import transcribe as transcribe_function
 from .decoding import detect_language as detect_language_function, decode as decode_function

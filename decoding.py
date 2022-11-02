@@ -2,10 +2,10 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Tuple, Iterable, Optional, Sequence, Union, TYPE_CHECKING
 
 import numpy as np
-import torch
-import torch.nn.functional as F
-from torch import Tensor
-from torch.distributions import Categorical
+import oneflow as torch
+import oneflow.nn.functional as F
+from oneflow import Tensor
+from oneflow.distributions import Categorical
 
 from .audio import CHUNK_LENGTH
 from .tokenizer import Tokenizer, get_tokenizer

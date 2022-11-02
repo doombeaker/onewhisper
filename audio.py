@@ -4,8 +4,8 @@ from typing import Union
 
 import ffmpeg
 import numpy as np
-import torch
-import torch.nn.functional as F
+import oneflow as torch
+import oneflow.nn.functional as F
 
 from .utils import exact_div
 
