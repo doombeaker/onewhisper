@@ -2,10 +2,10 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Tuple, Iterable, Optional, Sequence, Union, TYPE_CHECKING
 
 import numpy as np
-import torch
-import torch.nn.functional as F
-from torch import Tensor
-from torch.distributions import Categorical
+import oneflow as torch
+import oneflow.nn.functional as F
+from oneflow import Tensor
+from oneflow.distributions import Categorical
 
 from .audio import CHUNK_LENGTH
 from .tokenizer import Tokenizer, get_tokenizer
@@ -145,8 +145,12 @@ class PyTorchInference(Inference):
         return self.model.decoder(tokens, audio_features, kv_cache=self.kv_cache)
 
     def cleanup_caching(self):
-        for hook in self.hooks:
-            hook.remove()
+        from .model import MultiHeadAttention
+        def uninstall_hooks(layer):
+            if isinstance(layer, MultiHeadAttention):
+                layer.key._forward_hooks.clear()
+                layer.value._forward_hooks.clear()
+        self.model.decoder.apply(uninstall_hooks)
 
         self.kv_cache = {}
         self.hooks = []
@@ -431,7 +435,10 @@ class ApplyTimestampRules(LogitFilter):
         # if sum of probability over timestamps is above any other token, sample timestamp
         logprobs = F.log_softmax(logits.float(), dim=-1)
         for k in range(tokens.shape[0]):
-            timestamp_logprob = logprobs[k, self.tokenizer.timestamp_begin :].logsumexp(dim=-1)
+            #timestamp_logprob = logprobs[k, self.tokenizer.timestamp_begin :].logsumexp(dim=-1)
+            timestamp_logprob = logprobs[k, self.tokenizer.timestamp_begin :]
+            timestamp_logprob = torch.sum(torch.exp(timestamp_logprob),dim=-1)
+            timestamp_logprob = torch.log(timestamp_logprob)
             max_text_token_logprob = logprobs[k, : self.tokenizer.timestamp_begin].max()
             if timestamp_logprob > max_text_token_logprob:
                 logits[k, : self.tokenizer.timestamp_begin] = -np.inf

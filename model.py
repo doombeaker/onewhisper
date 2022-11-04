@@ -3,10 +3,10 @@ from typing import Dict
 from typing import Iterable, Optional
 
 import numpy as np
-import torch
-import torch.nn.functional as F
-from torch import Tensor
-from torch import nn
+import oneflow as torch
+import oneflow.nn.functional as F
+from oneflow import Tensor
+from oneflow import nn
 
 from .transcribe import transcribe as transcribe_function
 from .decoding import detect_language as detect_language_function, decode as decode_function
@@ -49,7 +49,7 @@ def sinusoids(length, channels, max_timescale=10000):
     """Returns sinusoids for positional embedding"""
     assert channels % 2 == 0
     log_timescale_increment = np.log(max_timescale) / (channels // 2 - 1)
-    inv_timescales = torch.exp(-log_timescale_increment * torch.arange(channels // 2))
+    inv_timescales = torch.exp((torch.arange(channels // 2)*(-log_timescale_increment)))
     scaled_time = torch.arange(length)[:, np.newaxis] * inv_timescales[np.newaxis, :]
     return torch.cat([torch.sin(scaled_time), torch.cos(scaled_time)], dim=1)
 

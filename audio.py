@@ -4,8 +4,8 @@ from typing import Union
 
 import ffmpeg
 import numpy as np
-import torch
-import torch.nn.functional as F
+import oneflow as torch
+import oneflow.nn.functional as F
 
 from .utils import exact_div
 
@@ -110,10 +110,13 @@ def log_mel_spectrogram(audio: Union[str, np.ndarray, torch.Tensor], n_mels: int
         if isinstance(audio, str):
             audio = load_audio(audio)
         audio = torch.from_numpy(audio)
-
+    audio = audio.to(device="cuda:0")
     window = torch.hann_window(N_FFT).to(audio.device)
-    stft = torch.stft(audio, N_FFT, HOP_LENGTH, window=window, return_complex=True)
-    magnitudes = stft[:, :-1].abs() ** 2
+
+    stft = torch.stft(audio, N_FFT, HOP_LENGTH, window=window, return_complex=False)
+    realpart = stft[:, :-1, 0]
+    imgpart = stft[:, :-1, 1]
+    magnitudes = realpart**2 + imgpart**2
 
     filters = mel_filters(audio.device, n_mels)
     mel_spec = filters @ magnitudes

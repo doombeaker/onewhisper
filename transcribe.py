@@ -4,7 +4,7 @@ import warnings
 from typing import List, Optional, Tuple, Union, TYPE_CHECKING
 
 import numpy as np
-import torch
+import oneflow as torch
 import tqdm
 
 from .audio import SAMPLE_RATE, N_FRAMES, HOP_LENGTH, pad_or_trim, log_mel_spectrogram
