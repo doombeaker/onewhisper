@@ -618,33 +618,45 @@ class DecodingTask:
         tokenizer: Tokenizer = self.tokenizer
         n_audio: int = mel.shape[0]
 
+        torch.cuda.nvtx.range_push("get audio features")
         audio_features: Tensor = self._get_audio_features(mel)  # encoder forward pass
         tokens: Tensor = torch.tensor([self.initial_tokens]).repeat(n_audio, 1)
+        torch.cuda.nvtx.range_pop()
 
         # detect language if requested, overwriting the language token
+        torch.cuda.nvtx.range_push("detect language")
         languages, language_probs = self._detect_language(audio_features, tokens)
+        torch.cuda.nvtx.range_pop()
+
         if self.options.task == "lang_id":
             return [
                 DecodingResult(audio_features=features, language=language, language_probs=probs)
                 for features, language, probs in zip(audio_features, languages, language_probs)
             ]
 
+        torch.cuda.nvtx.range_push("repeat audio & text tensors")
         # repeat the audio & text tensors by the group size, for beam search or best-of-n sampling
         audio_features = audio_features.repeat_interleave(self.n_group, dim=0)
         tokens = tokens.repeat_interleave(self.n_group, dim=0).to(audio_features.device)
+        torch.cuda.nvtx.range_pop()
 
         # call the main sampling loop
+        torch.cuda.nvtx.range_push("main loop")
         tokens, sum_logprobs, no_speech_probs = self._main_loop(audio_features, tokens)
+        torch.cuda.nvtx.range_pop()
 
         # reshape the tensors to have (n_audio, n_group) as the first two dimensions
+        torch.cuda.nvtx.range_push("reshape tensors")
         audio_features = audio_features[:: self.n_group]
         no_speech_probs = no_speech_probs[:: self.n_group]
         assert audio_features.shape[0] == len(no_speech_probs) == n_audio
 
         tokens = tokens.reshape(n_audio, self.n_group, -1)
         sum_logprobs = sum_logprobs.reshape(n_audio, self.n_group)
+        torch.cuda.nvtx.range_pop()
 
         # get the final candidates for each group, and slice between the first sampled token and EOT
+        torch.cuda.nvtx.range_push("slice tokens")
         tokens, sum_logprobs = self.decoder.finalize(tokens, sum_logprobs)
         tokens: List[List[Tensor]] = [
             [t[self.sample_begin : (t == tokenizer.eot).nonzero()[0, 0]] for t in s] for s in tokens
@@ -659,6 +671,8 @@ class DecodingTask:
         avg_logprobs: List[float] = [lp / (len(t) + 1) for t, lp in zip(tokens, sum_logprobs)]
 
         fields = (texts, languages, tokens, audio_features, avg_logprobs, no_speech_probs)
+        torch.cuda.nvtx.range_pop()
+
         if len(set(map(len, fields))) != 1:
             raise RuntimeError(f"inconsistent result lengths: {list(map(len, fields))}")
 
@@ -701,7 +715,6 @@ def decode(model: "Whisper", mel: Tensor, options: DecodingOptions = DecodingOpt
     single = mel.ndim == 2
     if single:
         mel = mel.unsqueeze(0)
-
     result = DecodingTask(model, options).run(mel)
     
     if single:

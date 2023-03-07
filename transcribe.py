@@ -81,8 +81,12 @@ def transcribe(
     if dtype == torch.float32:
         decode_options["fp16"] = False
 
+    torch.cuda.nvtx.range_push("log_mel_spectrogram")
     mel = log_mel_spectrogram(audio)
+    torch.cuda.nvtx.range_pop()
 
+
+    torch.cuda.nvtx.range_push("language detection")
     if decode_options.get("language", None) is None:
         if not model.is_multilingual:
             decode_options["language"] = "en"
@@ -98,6 +102,7 @@ def transcribe(
     language = decode_options["language"]
     task = decode_options.get("task", "transcribe")
     tokenizer = get_tokenizer(model.is_multilingual, language=language, task=task)
+    torch.cuda.nvtx.range_pop()
 
     def decode_with_fallback(segment: torch.Tensor) -> DecodingResult:
         temperatures = [temperature] if isinstance(temperature, (int, float)) else temperature
@@ -127,6 +132,7 @@ def transcribe(
 
         return decode_result
 
+    torch.cuda.nvtx.range_push("decoding options")
     seek = 0
     input_stride = exact_div(
         N_FRAMES, model.dims.n_audio_ctx
@@ -142,6 +148,7 @@ def transcribe(
     if initial_prompt:
         initial_prompt = tokenizer.encode(" " + initial_prompt.strip())
         all_tokens.extend(initial_prompt)
+    torch.cuda.nvtx.range_pop()
 
     def add_segment(
         *, start: float, end: float, text_tokens: torch.Tensor, result: DecodingResult
@@ -173,13 +180,17 @@ def transcribe(
 
     with tqdm.tqdm(total=num_frames, unit='frames', disable=verbose is not False) as pbar:
         while seek < num_frames:
+            torch.cuda.nvtx.range_push("pad or trim")
             timestamp_offset = float(seek * HOP_LENGTH / SAMPLE_RATE)
             segment = pad_or_trim(mel[:, seek:], N_FRAMES).to(model.device).to(dtype)
             segment_duration = segment.shape[-1] * HOP_LENGTH / SAMPLE_RATE
+            torch.cuda.nvtx.range_pop()
 
+            torch.cuda.nvtx.range_push("decode_with_fallback")
             decode_options["prompt"] = all_tokens[prompt_reset_since:]
             result: DecodingResult = decode_with_fallback(segment)
             tokens = torch.tensor(result.tokens)
+            torch.cuda.nvtx.range_pop()
 
             if no_speech_threshold is not None:
                 # no voice activity check
@@ -192,6 +203,7 @@ def transcribe(
                     seek += segment.shape[-1]  # fast-forward to the next segment boundary
                     continue
 
+            torch.cuda.nvtx.range_push("post process")
             timestamp_tokens: torch.Tensor = tokens.ge(tokenizer.timestamp_begin)
             consecutive = torch.where(timestamp_tokens[:-1] & timestamp_tokens[1:])[0].add_(1)
             if len(consecutive) > 0:  # if the output contains two consecutive timestamp tokens
@@ -238,7 +250,7 @@ def transcribe(
             if not condition_on_previous_text or result.temperature > 0.5:
                 # do not feed the prompt tokens if a high temperature was used
                 prompt_reset_since = len(all_tokens)
-
+            torch.cuda.nvtx.range_pop()
             # update progress bar
             pbar.update(min(num_frames, seek) - previous_seek_value)
             previous_seek_value = seek
